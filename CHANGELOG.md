@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- `get_bug_flags` tool and `Bugzilla.bug_flags()` — list a bug's flags with their instance ids (flags are requested explicitly via `include_fields`, since some instances omit them from the default bug view).
+- `update_bug_flag` tool — set, grant, deny, or clear a bug flag (e.g. `needinfo`, `blocker`), by name+requestee or by flag instance id.
+
 ## [v0.18.0] - 2026-07-31
 
 This release is same as previous one but bumped due to premature pypi release 

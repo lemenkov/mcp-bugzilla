@@ -312,3 +312,86 @@ async def test_list_attachments_tool_passthrough():
 
     assert [a["id"] for a in result] == [1, 2]
     bz.list_attachments.assert_awaited_once_with(123)
+
+
+@pytest.mark.asyncio
+async def test_get_bug_flags_passthrough():
+    bz = AsyncMock()
+    bz.bug_flags = AsyncMock(
+        return_value=[{"id": 6228688, "name": "needinfo", "status": "?"}]
+    )
+    result = await server.get_bug_flags(bug_id=123, bz=bz)
+    bz.bug_flags.assert_awaited_once_with(123)
+    assert result[0]["id"] == 6228688
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_set_by_name():
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    await server.update_bug_flag(
+        bug_id=123, status="?", name="needinfo", requestee="dev@example.com", bz=bz
+    )
+    bz.update_bug.assert_awaited_once_with(
+        123,
+        {
+            "flags": [
+                {"status": "?", "name": "needinfo", "requestee": "dev@example.com"}
+            ]
+        },
+        "",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_clear_by_id():
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    await server.update_bug_flag(bug_id=123, status="X", flag_id=6228688, bz=bz)
+    bz.update_bug.assert_awaited_once_with(
+        123, {"flags": [{"status": "X", "id": 6228688}]}, ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_clear_by_name():
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    await server.update_bug_flag(
+        bug_id=123, status="X", name="needinfo", requestee="dev@example.com", bz=bz
+    )
+    bz.update_bug.assert_awaited_once_with(
+        123,
+        {
+            "flags": [
+                {"status": "X", "name": "needinfo", "requestee": "dev@example.com"}
+            ]
+        },
+        "",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_requires_name_or_id():
+    bz = AsyncMock()
+    with pytest.raises(ToolError, match="Provide 'name'"):
+        await server.update_bug_flag(bug_id=123, status="?", bz=bz)
+    bz.update_bug.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_rejects_both_name_and_id():
+    bz = AsyncMock()
+    with pytest.raises(ToolError, match="not both"):
+        await server.update_bug_flag(
+            bug_id=123, status="X", name="needinfo", flag_id=42, bz=bz
+        )
+    bz.update_bug.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_needinfo_requires_requestee():
+    bz = AsyncMock()
+    with pytest.raises(ToolError, match="requires a 'requestee'"):
+        await server.update_bug_flag(bug_id=123, status="?", name="needinfo", bz=bz)
+    bz.update_bug.assert_not_awaited()
