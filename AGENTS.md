@@ -54,9 +54,9 @@ Tests use `respx` to mock HTTP calls and `pytest-asyncio` for async test support
 
 1. Open `src/mcp_bugzilla/server.py`.
 2. Define a new async function decorated with `@mcp.tool()`.
-3. Use `make_bugzilla_request()` from `mcp_utils.py` for authenticated Bugzilla REST API calls.
+3. Add a method to the `Bugzilla` client class in `mcp_utils.py` for the authenticated REST call — use the pre-authenticated `self.client` and follow existing methods like `bug_info` / `update_bug` (including their `httpx` error handling) — then call it from the tool.
 4. Raise `ToolError` on Bugzilla API errors.
-5. Add a corresponding test in `tests/test_mcp_utils.py` (or a new test file) using `respx` to mock the HTTP response.
+5. Add tests: the client method in `tests/test_mcp_utils.py` (mock HTTP with `respx`), and the tool in `tests/test_server.py` (with an `AsyncMock` client).
 6. update relevant documentation wherever applicable
 
 ## Disabling Tools at Runtime
