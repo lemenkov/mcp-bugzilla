@@ -880,6 +880,96 @@ async def download_attachment(
         raise ToolError(f"Failed to download attachment {attachment_id}\nReason: {e}")
 
 
+@mcp.tool(
+    annotations={"readOnlyHint": True, "openWorldHint": True},
+    tags={"read"},
+)
+async def get_bug_flags(bug_id: int, bz: Bugzilla = _get_bz) -> list[dict[str, Any]]:
+    """List the flags currently set on a bug, with their instance ids.
+
+    Returns each flag's id, name, status, setter, and requestee — the id is
+    what update_bug_flag needs to change or clear a specific flag instance
+    (e.g. to disambiguate when the same flag type is set for several requestees).
+    """
+    mcp_log.info(f"[LLM-REQ] get_bug_flags(bug_id={bug_id})")
+    try:
+        return await bz.bug_flags(bug_id)
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Failed to fetch bug flags\n{e}")
+
+
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+    tags={"write"},
+)
+async def update_bug_flag(
+    bug_id: int,
+    status: Literal["?", "+", "-", "X"],
+    name: str | None = None,
+    requestee: str | None = None,
+    flag_id: int | None = None,
+    comment: str = "",
+    bz: Bugzilla = _get_bz,
+) -> dict[str, Any]:
+    """Set, grant, deny, or clear a flag on a bug (e.g. needinfo, blocker).
+
+    A single flag type such as ``needinfo`` may exist several times on one bug
+    (one per requestee), so Bugzilla has two modes and this tool mirrors them:
+
+    - **Set a new flag** — pass ``name`` (and ``requestee`` for requestable
+      flags like needinfo), e.g. name="needinfo", status="?",
+      requestee="user@example.com".
+    - **Change or clear an existing flag** — pass ``flag_id``, the flag
+      *instance* id (not the type id). Get it by calling ``get_bug_flags``
+      first and reading each flag's ``id``. Use status="X" to clear/remove it.
+
+    Args:
+        bug_id: Bug ID to update.
+        status: "?" request, "+" grant, "-" deny, "X" clear/remove.
+        name: Flag type name, when setting a new flag (e.g. "needinfo").
+        requestee: Email of the person the flag is requested from (needinfo etc.).
+        flag_id: Instance id of an existing flag, when changing or clearing it.
+        comment: Optional comment to add with the change.
+    """
+    mcp_log.info(
+        f"[LLM-REQ] update_bug_flag(bug_id={bug_id}, status='{status}', "
+        f"name={name}, requestee={requestee}, flag_id={flag_id})"
+    )
+
+    if flag_id is None and name is None:
+        raise ToolError(
+            "Provide 'name' to set a new flag, or 'flag_id' to change/clear an "
+            "existing one (call bug_info first to get the flag's id)."
+        )
+    if flag_id is not None and name is not None:
+        raise ToolError(
+            "Provide either 'name' (new flag) or 'flag_id' (existing flag), not both."
+        )
+    if name == "needinfo" and status == "?" and not requestee:
+        raise ToolError(
+            "Setting needinfo with status '?' requires a 'requestee' "
+            "(the email of the person the info is requested from)."
+        )
+
+    flag: dict[str, Any] = {"status": status}
+    if flag_id is not None:
+        flag["id"] = flag_id
+    else:
+        flag["name"] = name
+        if requestee:
+            flag["requestee"] = requestee
+
+    try:
+        result = await bz.update_bug(bug_id, {"flags": [flag]}, comment)
+        return result
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Failed to update bug flag\n{e}")
+
+
 def disable_components_selectively():
     """
     Disables MCP components based on environment variables.

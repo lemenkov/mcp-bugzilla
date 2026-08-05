@@ -344,6 +344,51 @@ async def test_quicksearch(bz_client):
 
 
 @pytest.mark.asyncio
+async def test_bug_flags(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": [
+                        {
+                            "id": 123,
+                            "flags": [
+                                {
+                                    "id": 6228688,
+                                    "type_id": 16,
+                                    "name": "needinfo",
+                                    "status": "?",
+                                    "setter": "user@example.com",
+                                    "requestee": "dev@example.com",
+                                }
+                            ],
+                        }
+                    ]
+                },
+            )
+        )
+        flags = await bz_client.bug_flags(123)
+
+        assert route.called
+        # flags must be requested explicitly, else this instance omits them
+        assert route.calls.last.request.url.params.get("include_fields") == "id,flags"
+        assert len(flags) == 1
+        assert flags[0]["name"] == "needinfo"
+        assert flags[0]["id"] == 6228688
+
+
+@pytest.mark.asyncio
+async def test_bug_flags_empty(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug/123").mock(
+            return_value=Response(200, json={"bugs": [{"id": 123}]})
+        )
+        flags = await bz_client.bug_flags(123)
+        assert flags == []
+
+
+@pytest.mark.asyncio
 async def test_update_bug_single_field(bz_client):
     """Test updating a single field"""
     async with respx.mock(base_url=MOCK_URL) as respx_mock:

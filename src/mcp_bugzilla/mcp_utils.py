@@ -197,6 +197,33 @@ class Bugzilla:
         mcp_log.debug(f"[BZ-RES] {envelope}")
         return envelope
 
+    async def bug_flags(self, bug_id: int) -> list[dict[str, Any]]:
+        """Return the flags currently set on a bug, with their instance ids.
+
+        The default bug view omits flags on some instances (e.g. Red Hat
+        Bugzilla), so we request them explicitly via include_fields.
+        """
+        url = f"/bug/{bug_id}"
+        params = {"include_fields": "id,flags"}
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
+
+        try:
+            r = await self.client.get(url, params=params)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+        bugs = r.json().get("bugs", [])
+        flags = bugs[0].get("flags", []) if bugs else []
+        mcp_log.info(f"[BZ-RES] Retrieved {len(flags)} flags for bug {bug_id}")
+        return flags
+
     async def bug_history(
         self, bug_id: int, new_since: datetime | None = None
     ) -> list[dict[str, Any]]:
