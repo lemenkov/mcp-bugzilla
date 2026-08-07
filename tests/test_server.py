@@ -446,3 +446,56 @@ async def test_bug_comments_limit_keeps_most_recent():
     bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
     out = await server.bug_comments(id=42, limit=1, include_fields=None, bz=bz)
     assert len(out) == 1 and out[0]["count"] == 1
+
+
+_HIST = [
+    {
+        "when": "2026-01-01T00:00:00Z",
+        "who": "bot@monitoring",
+        "changes": [{"field_name": "summary", "added": "v2", "removed": "v1"}],
+    },
+    {
+        "when": "2026-02-01T00:00:00Z",
+        "who": "human@example.com",
+        "changes": [
+            {"field_name": "status", "added": "CLOSED", "removed": "NEW"},
+            {"field_name": "resolution", "added": "RAWHIDE", "removed": ""},
+            {"field_name": "cf_last_closed", "added": "2026-02-01", "removed": ""},
+        ],
+    },
+    {
+        "when": "2026-03-01T00:00:00Z",
+        "who": "human@example.com",
+        "changes": [
+            {"field_name": "flagtypes.name", "added": "needinfo?", "removed": ""}
+        ],
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_bug_history_changed_fields_keeps_only_matching_changes():
+    bz = AsyncMock()
+    bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
+    out = await server.bug_history(id=42, changed_fields="status,resolution", bz=bz)
+    # only the lifecycle event survives, and only its matching changes are kept
+    assert len(out) == 1
+    kept = {c["field_name"] for c in out[0]["changes"]}
+    assert kept == {"status", "resolution"}  # cf_last_closed dropped
+
+
+@pytest.mark.asyncio
+async def test_bug_history_exclude_authors():
+    bz = AsyncMock()
+    bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
+    out = await server.bug_history(id=42, exclude_authors="bot@monitoring", bz=bz)
+    assert len(out) == 2
+    assert all(h["who"] == "human@example.com" for h in out)
+
+
+@pytest.mark.asyncio
+async def test_bug_history_limit_keeps_most_recent():
+    bz = AsyncMock()
+    bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
+    out = await server.bug_history(id=42, limit=1, bz=bz)
+    assert len(out) == 1 and out[0]["when"] == "2026-03-01T00:00:00Z"  # newest

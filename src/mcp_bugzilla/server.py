@@ -121,16 +121,63 @@ async def bug_info(bug_ids: set[int], bz: Bugzilla = _get_bz) -> dict[str, Any]:
 async def bug_history(
     id: int,
     new_since: datetime | None = None,
+    changed_fields: str | None = None,
+    exclude_authors: str | None = None,
+    limit: int | None = None,
     bz: Bugzilla = _get_bz,
 ) -> list[dict[str, Any]]:
     """Returns the history of given bug id.
-    new_since allows filtering history newer than the given date.
+
+    A bug's history is often dominated by low-signal churn (repeated bot
+    edits, cc-list changes, flag flips). These SQL-like controls keep only
+    the change events that matter:
+
+      changed_fields   Comma-separated Bugzilla field names; keep only changes
+                       to these fields, dropping events left with no matching
+                       change -- e.g. "status,resolution,assigned_to" to see
+                       only lifecycle changes and hide cc/summary/flag churn.
+      exclude_authors  Comma-separated substrings; drop events whose author
+                       matches any -- e.g. "upstream-release-monitoring" to
+                       hide release-monitoring bot edits.
+      limit            Return only the most recent N events (chronological
+                       order is preserved).
+      new_since        Only history newer than the given date.
     """
 
-    mcp_log.info(f"[LLM-REQ] bug_history(id={id}, new_since={new_since})")
+    mcp_log.info(
+        f"[LLM-REQ] bug_history(id={id}, new_since={new_since}, "
+        f"changed_fields={changed_fields}, exclude_authors={exclude_authors}, "
+        f"limit={limit})"
+    )
 
     try:
         history = await bz.bug_history(id, new_since=new_since)
+
+        # WHERE who NOT LIKE any(exclude_authors)
+        if exclude_authors:
+            patterns = [p.strip() for p in exclude_authors.split(",") if p.strip()]
+            history = [
+                h
+                for h in history
+                if not any(p in (h.get("who") or "") for p in patterns)
+            ]
+
+        # WHERE field_name IN (changed_fields); drop events left with no match
+        if changed_fields:
+            wanted = {f.strip() for f in changed_fields.split(",") if f.strip()}
+            pruned = []
+            for h in history:
+                kept = [
+                    c for c in h.get("changes", []) if c.get("field_name") in wanted
+                ]
+                if kept:
+                    pruned.append({**h, "changes": kept})
+            history = pruned
+
+        # LIMIT to the most recent N (chronological order preserved)
+        if limit and limit > 0:
+            history = history[-limit:]
+
         mcp_log.info(f"[LLM-RES] Returning {len(history)} history items")
         return history
     except Exception as e:  # noqa: BLE001

@@ -31,12 +31,16 @@ The server provides the following tools for interacting with Bugzilla:
   - **Returns**: A dictionary containing the array `bugs` which lists all available information about the bugs (status, assignee, summary, description, extensions, etc.)
   - **Example**: `bug_info({12345, 67890})` returns complete bug details for the specified IDs.
 
-- **`bug_history(id: int, new_since: Optional[datetime] = None)`**: Fetches the history of changes for a given bug ID.
+- **`bug_history(id: int, new_since: Optional[datetime] = None, changed_fields: Optional[str] = None, exclude_authors: Optional[str] = None, limit: Optional[int] = None)`**: Fetches the change history of a given bug ID, with SQL-like controls to keep only the change events that matter for triage.
   - **Parameters**:
     - `id`: The bug ID to fetch history for
-    - `new_since`: Optional datetime object to only return history entries newer than this time.
-  - **Returns**: A list of history event dictionaries, each containing timestamp, author, and an array of changes.
-  - **Example**: `bug_history(12345, new_since=datetime.fromisoformat("2026-01-01T00:00:00"))` returns all history changes newer than Jan 1, 2026.
+    - `new_since`: Optional datetime object to only return history newer than this time
+    - `changed_fields`: Comma-separated Bugzilla field names; keep only changes to these fields, dropping events left with no matching change (e.g. `"status,resolution,assigned_to"` to see only lifecycle changes and hide the cc / flagtypes.name / summary churn that dominates most histories)
+    - `exclude_authors`: Comma-separated substrings; drop events whose author matches any (e.g. `"upstream-release-monitoring"` to hide release-monitoring bot edits)
+    - `limit`: Return only the most recent N events (chronological order preserved)
+  - **Returns**: A list of history-event dictionaries, each containing `when`, `who`, and a `changes` list (each change has `field_name`, `added`, and `removed`)
+  - **Note on Bugzilla API parity**: `new_since` mirrors Bugzilla's own API parameter. `changed_fields`, `exclude_authors`, and `limit` have no server-side Bugzilla equivalent — this server applies them client-side, as post-processing over the standard `Bug.history` response; the underlying Bugzilla request is unmodified
+  - **Example**: `bug_history(2504555, changed_fields="status,resolution")` returns just the event where the bug was closed as RAWHIDE, filtering out the surrounding cc and needinfo-flag churn
 
 - **`bug_comments(id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None, include_fields: Optional[str] = "count,id,creator,creation_time,text,attachment_id", exclude_creators: Optional[str] = None, limit: Optional[int] = None)`**: Fetches comments associated with a given bug ID, with SQL-like controls to keep only what is needed and avoid flooding the context on large threads.
   - **Parameters**:
