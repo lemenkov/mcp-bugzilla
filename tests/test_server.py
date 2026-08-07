@@ -395,3 +395,54 @@ async def test_update_bug_flag_needinfo_requires_requestee():
     with pytest.raises(ToolError, match="requires a 'requestee'"):
         await server.update_bug_flag(bug_id=123, status="?", name="needinfo", bz=bz)
     bz.update_bug.assert_not_awaited()
+
+
+_RAW = [
+    {
+        "count": 0,
+        "id": 1,
+        "creator": "bot@monitoring",
+        "creator_id": 9,
+        "text": "v1",
+        "creation_time": "2025-01-01T00:00:00Z",
+        "tags": [],
+        "bug_id": 42,
+        "is_private": False,
+    },
+    {
+        "count": 1,
+        "id": 2,
+        "creator": "human@example.com",
+        "creator_id": 3,
+        "text": "real",
+        "creation_time": "2025-02-01T00:00:00Z",
+        "tags": [],
+        "bug_id": 42,
+        "is_private": False,
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_bug_comments_default_projection_drops_redundant_fields():
+    bz = AsyncMock()
+    bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
+    out = await server.bug_comments(id=42, bz=bz)
+    assert set(out[0]) == {"count", "id", "creator", "creation_time", "text"}
+    assert "creator_id" not in out[0] and "bug_id" not in out[0]
+
+
+@pytest.mark.asyncio
+async def test_bug_comments_exclude_creators():
+    bz = AsyncMock()
+    bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
+    out = await server.bug_comments(id=42, exclude_creators="bot@monitoring", bz=bz)
+    assert len(out) == 1 and out[0]["creator"] == "human@example.com"
+
+
+@pytest.mark.asyncio
+async def test_bug_comments_limit_keeps_most_recent():
+    bz = AsyncMock()
+    bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
+    out = await server.bug_comments(id=42, limit=1, include_fields=None, bz=bz)
+    assert len(out) == 1 and out[0]["count"] == 1

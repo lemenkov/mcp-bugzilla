@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 - `get_bug_flags` tool and `Bugzilla.bug_flags()` — list a bug's flags with their instance ids (flags are requested explicitly via `include_fields`, since some instances omit them from the default bug view).
 - `update_bug_flag` tool — set, grant, deny, or clear a bug flag (e.g. `needinfo`, `blocker`), by name+requestee or by flag instance id.
+- `bug_comments` gained SQL-like output controls to avoid flooding the context on large threads: `include_fields` (per-comment field projection, lean default), `exclude_creators` (drop comments by creator substring, e.g. bot noise), and `limit` (most recent N). Note: the `include_fields` default now returns a lean field set; pass `include_fields=None` for the full objects.
 
 ## [v0.18.0] - 2026-07-31
 
