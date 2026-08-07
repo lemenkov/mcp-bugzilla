@@ -142,30 +142,63 @@ async def bug_comments(
     id: int,
     include_private_comments: bool = False,
     new_since: datetime | None = None,
+    include_fields: str | None = "count,id,creator,creation_time,text,attachment_id",
+    exclude_creators: str | None = None,
+    limit: int | None = None,
     bz: Bugzilla = _get_bz,
 ) -> list[dict[str, Any]]:
-    """Returns the comments of given bug id
-    Private comments are not included by default
-    but can be explicitly requested.
-    new_since allows filtering comments newer than the given date.
+    """Returns the comments of given bug id.
+
+    Comment threads on long-lived bugs can be very large (hundreds of automated
+    comments), so this tool exposes SQL-like controls to return only what is
+    needed and avoid flooding the context window:
+
+      include_fields    Comma-separated field names to keep per comment
+                        (default: count,id,creator,creation_time,text,attachment_id).
+                        Pass None to return every field.
+      exclude_creators  Comma-separated substrings; drop comments whose creator
+                        matches any -- e.g. "upstream-release-monitoring" to hide
+                        release-monitoring/scratch-build bot noise.
+      limit             Return only the most recent N comments (chronological
+                        order is preserved).
+      new_since         Only comments newer than the given date.
+      include_private_comments  Include private comments (default: False).
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bug_comments(id={id}, include_private_comments={include_private_comments}, new_since={new_since})"
+        f"[LLM-REQ] bug_comments(id={id}, "
+        f"include_private_comments={include_private_comments}, new_since={new_since}, "
+        f"include_fields={include_fields}, exclude_creators={exclude_creators}, "
+        f"limit={limit})"
     )
 
     try:
-        all_comments = await bz.bug_comments(id, new_since=new_since)
+        comments = await bz.bug_comments(id, new_since=new_since)
 
-        if include_private_comments:
-            mcp_log.info(
-                f"[LLM-RES] Returning {len(all_comments)} comments (including private)"
-            )
-            return all_comments
+        # WHERE is_private = false (unless explicitly requested)
+        if not include_private_comments:
+            comments = [c for c in comments if not c.get("is_private", False)]
 
-        public_comments = [c for c in all_comments if not c.get("is_private", False)]
-        mcp_log.info(f"[LLM-RES] Returning {len(public_comments)} public comments")
-        return public_comments
+        # WHERE creator NOT LIKE any(exclude_creators)
+        if exclude_creators:
+            patterns = [p.strip() for p in exclude_creators.split(",") if p.strip()]
+            comments = [
+                c
+                for c in comments
+                if not any(p in (c.get("creator") or "") for p in patterns)
+            ]
+
+        # LIMIT to the most recent N (chronological order preserved)
+        if limit and limit > 0:
+            comments = comments[-limit:]
+
+        # SELECT include_fields
+        if include_fields is not None:
+            wanted = [f.strip() for f in include_fields.split(",") if f.strip()]
+            comments = [{k: c[k] for k in wanted if k in c} for c in comments]
+
+        mcp_log.info(f"[LLM-RES] Returning {len(comments)} comments")
+        return comments
 
     except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to fetch bug comments\nReason: {e}")

@@ -38,14 +38,17 @@ The server provides the following tools for interacting with Bugzilla:
   - **Returns**: A list of history event dictionaries, each containing timestamp, author, and an array of changes.
   - **Example**: `bug_history(12345, new_since=datetime.fromisoformat("2026-01-01T00:00:00"))` returns all history changes newer than Jan 1, 2026.
 
-- **`bug_comments(id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None)`**: Fetches all comments associated with a given bug ID.
+- **`bug_comments(id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None, include_fields: Optional[str] = "count,id,creator,creation_time,text,attachment_id", exclude_creators: Optional[str] = None, limit: Optional[int] = None)`**: Fetches comments associated with a given bug ID, with SQL-like controls to keep only what is needed and avoid flooding the context on large threads.
   - **Parameters**:
     - `id`: The bug ID to fetch comments for
     - `include_private_comments`: Whether to include private comments (default: `False`)
-    - `new_since`: Optional datetime object to only return comments newer than this time.
-  - **Returns**: A list of comment dictionaries, each containing author, timestamp, text, and privacy status
-  - **Example**: `bug_comments(12345, include_private_comments=True, new_since=datetime.fromisoformat("2026-01-01T00:00:00"))` returns all comments newer than Jan 1, 2026 including private ones
-
+    - `new_since`: Optional datetime object to only return comments newer than this time
+    - `include_fields`: Comma-separated field names to keep per comment (default: `count,id,creator,creation_time,text,attachment_id`). Pass `None` to return every field
+    - `exclude_creators`: Comma-separated substrings; drop comments whose creator matches any (e.g. `"upstream-release-monitoring"` to hide release-monitoring/bot noise)
+    - `limit`: Return only the most recent N comments (chronological order preserved)
+  - **Returns**: A list of comment dictionaries. By default each contains `count`, `id`, `creator`, `creation_time`, `text`, and `attachment_id`; pass `include_fields=None` for the full objects (which also include `creator_id`, `bug_id`, `tags`, `time`, and `is_private`)
+  - **Note on Bugzilla API parity**: `new_since` and `include_fields` mirror Bugzilla's own API parameters of the same names (`include_fields` is applied client-side here). `exclude_creators` and `limit` have no server-side Bugzilla equivalent — this server applies them client-side, as post-processing over the standard `Bug.comments` response; the underlying Bugzilla request is unmodified.
+  - **Example**: `bug_comments(12345, exclude_creators="upstream-release-monitoring", limit=5)` returns the 5 most recent comments that aren't from the release-monitoring bot
 
 
 - **`add_comment(bug_id: int, comment: str, is_private: bool = False)`**: Adds a new comment to a specified bug.
