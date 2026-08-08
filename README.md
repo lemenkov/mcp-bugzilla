@@ -25,11 +25,14 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Bug Information
 
-- **`bug_info(bug_ids: set[int])`**: Retrieves comprehensive details for specified Bugzilla bug IDs.
+- **`bug_info(bug_ids: set[int], include_fields: Optional[str] = None, exclude_fields: Optional[str] = None)`**: Retrieves comprehensive details for specified Bugzilla bug IDs. By default every field is returned; use Bugzilla's native field selection to trim large or bulk fetches.
   - **Parameters**:
     - `bug_ids`: A set of bug IDs to fetch details for
-  - **Returns**: A dictionary containing the array `bugs` which lists all available information about the bugs (status, assignee, summary, description, extensions, etc.)
-  - **Example**: `bug_info({12345, 67890})` returns complete bug details for the specified IDs.
+    - `include_fields`: Comma-separated field names to return (Bugzilla's native `Bug.get` parameter; supports field groups and `_default`/`_all`/`_extra`). For the leanest response request only scalar fields, e.g. `"id,status,resolution,summary"`. Requesting a user field (`assigned_to`, `creator`, `cc`, `qa_contact`) also returns its verbose `*_detail` object. Defaults to all fields
+    - `exclude_fields`: Comma-separated field names to drop. To remove a user-object expansion, exclude both the base field and its `*_detail` together, e.g. `"cc,cc_detail"` — excluding the `*_detail` alone has no effect, as Bugzilla re-attaches it while the base field is present
+  - **Returns**: A dictionary containing the array `bugs` which lists the requested information about the bugs (status, assignee, summary, description, extensions, etc.)
+  - **Note on Bugzilla API parity**: both `include_fields` and `exclude_fields` are native Bugzilla `Bug.get` parameters, forwarded to the API unchanged; the underlying request is standard Bugzilla
+  - **Example**: `bug_info({12345, 67890}, include_fields="id,status,resolution,summary")` fetches two bugs with just the essential scalar fields
 
 - **`bug_history(id: int, new_since: Optional[datetime] = None, changed_fields: Optional[str] = None, exclude_authors: Optional[str] = None, limit: Optional[int] = None)`**: Fetches the change history of a given bug ID, with SQL-like controls to keep only the change events that matter for triage.
   - **Parameters**:
