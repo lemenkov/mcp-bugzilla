@@ -102,16 +102,42 @@ _get_bz = Depends(get_bz)
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def bug_info(bug_ids: set[int], bz: Bugzilla = _get_bz) -> dict[str, Any]:
-    """Returns the entire information for one or more bugzilla bug ids."""
+async def bug_info(
+    bug_ids: set[int],
+    include_fields: str | None = None,
+    exclude_fields: str | None = None,
+    bz: Bugzilla = _get_bz,
+) -> dict[str, Any]:
+    """Returns information for one or more bugzilla bug ids.
 
-    mcp_log.info(f"[LLM-REQ] bug_info(ids={bug_ids})")
+    By default every field is returned. For large or bulk fetches, use
+    Bugzilla's native field selection (both are forwarded to Bug.get):
+
+      include_fields  Comma-separated fields to return. Supports field groups
+                      and the special values _default, _all, _extra. For the
+                      leanest response request only scalar fields, e.g.
+                      "id,status,resolution,summary". Note: requesting a user
+                      field (assigned_to, creator, cc, qa_contact) also returns
+                      its verbose *_detail object.
+      exclude_fields  Comma-separated fields to drop. To remove a user-object
+                      expansion, exclude BOTH the base field and its *_detail
+                      together, e.g. "cc,cc_detail" -- excluding the *_detail
+                      alone has no effect, because Bugzilla re-attaches it while
+                      the base field is present.
+    """
+
+    mcp_log.info(
+        f"[LLM-REQ] bug_info(ids={bug_ids}, include_fields={include_fields}, "
+        f"exclude_fields={exclude_fields})"
+    )
 
     if not bug_ids:
         raise ToolError("No bug IDs provided")
 
     try:
-        result = await bz.bug_info(bug_ids)
+        result = await bz.bug_info(
+            bug_ids, include_fields=include_fields, exclude_fields=exclude_fields
+        )
         return result
 
     except Exception as e:  # noqa: BLE001
